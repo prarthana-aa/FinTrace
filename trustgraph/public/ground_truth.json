@@ -1,0 +1,52 @@
+{
+  "mule_account_ids": [
+    "ACC00013",
+    "ACC00014",
+    "ACC00016",
+    "ACC00017",
+    "ACC00045",
+    "ACC00048",
+    "ACC00053",
+    "ACC00058",
+    "ACC00072",
+    "ACC00102",
+    "ACC00112",
+    "ACC00115",
+    "ACC00120",
+    "ACC00126",
+    "ACC00141",
+    "ACC00215",
+    "ACC00217",
+    "ACC00259",
+    "ACC00280"
+  ],
+  "n_rings": 1,
+  "ring_roles": {
+    "collectors": [
+      "ACC00215",
+      "ACC00102"
+    ],
+    "intermediaries": [
+      "ACC00014",
+      "ACC00259",
+      "ACC00120",
+      "ACC00112",
+      "ACC00048"
+    ],
+    "cashout": [
+      "ACC00016",
+      "ACC00017",
+      "ACC00217",
+      "ACC00045",
+      "ACC00280",
+      "ACC00053",
+      "ACC00072",
+      "ACC00115",
+      "ACC00126",
+      "ACC00141",
+      "ACC00013",
+      "ACC00058"
+    ]
+  },
+  "reporting_threshold": 50000
+}
