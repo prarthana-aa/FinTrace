@@ -7,7 +7,7 @@ const TAU = 2 * Math.PI;
 
 const radius = (node) => 2 + Math.min(6, Math.sqrt((node.degree || 1)));
 
-export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null }) {
+export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null, liveConfirmedIds = null, liveFalsePositiveIds = null }) {
   const wrapRef = useRef(null);
   const fgRef = useRef(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
@@ -54,7 +54,9 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
   const nodeCanvasObject = useCallback(
     (node, ctx, globalScale) => {
       const isFullFlag = flaggedSet.has(node.id);
-      const isLiveFlag = !!(liveFlaggedSet && liveFlaggedSet.has(node.id));
+      const isConfirmed = liveConfirmedIds && liveConfirmedIds.has(node.id);
+      const isFalsePositive = liveFalsePositiveIds && liveFalsePositiveIds.has(node.id);
+      const isLiveFlag = isConfirmed || isFalsePositive;
       const highlightDim = highlight && !isFullFlag && !isLiveFlag;
 
       // replay appearance: nodes with no visible edges yet should be dim/small
@@ -72,7 +74,8 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       })();
 
       let fill = COLORS[node.type] || '#8894a8';
-      if (isLiveFlag) fill = FLAG;
+      if (isConfirmed) fill = FLAG;
+      else if (isFalsePositive) fill = '#ffb347';
       else if (highlight && isFullFlag) fill = FLAG;
       const baseR = radius(node);
       const r = appeared ? baseR : Math.min(1.5, baseR);
@@ -139,11 +142,17 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
     (link) => {
       const a = endId(link.source);
       const b = endId(link.target);
+      const confirmedA = liveConfirmedIds && liveConfirmedIds.has(a);
+      const confirmedB = liveConfirmedIds && liveConfirmedIds.has(b);
+      const falseA = liveFalsePositiveIds && liveFalsePositiveIds.has(a);
+      const falseB = liveFalsePositiveIds && liveFalsePositiveIds.has(b);
       const liveA = liveFlaggedSet && liveFlaggedSet.has(a);
       const liveB = liveFlaggedSet && liveFlaggedSet.has(b);
       const isFresh = freshLinkIds.has(link.id);
       if (isFresh) return 2.2;
       if (typeof link.tx === 'object' && replayMode && link.tx._index >= replayIndex) return 0.25;
+      if (confirmedA && confirmedB) return 2.2;
+      if (falseA || falseB) return 1.4;
       if (liveA && liveB) return 1.8;
       if (!highlight) return 0.5;
       const fs = flaggedSet.has(a);
@@ -152,7 +161,7 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       if (fs || ft) return 0.8;
       return 0.4;
     },
-    [flaggedSet, highlight, liveFlaggedSet, freshLinkIds, replayMode, replayIndex]
+    [flaggedSet, highlight, liveFlaggedSet, liveConfirmedIds, liveFalsePositiveIds, freshLinkIds, replayMode, replayIndex]
   );
 
   return (

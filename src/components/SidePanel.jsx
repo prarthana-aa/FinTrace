@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { SIGNAL_ORDER, WEIGHTS, explain, signalDetail, neighborhood } from '../detection.js';
 import LiveFeed from './LiveFeed.jsx';
 
 const COLORS = { personal: '#6b7fd7', merchant: '#22c39a', payments_bank: '#b57bff' };
 const FLAG = '#ff4d5e';
+const AMBER = '#ffb347';
 const TAU = 2 * Math.PI;
 
 function MiniGraph({ selectedId, transactions, scores }) {
@@ -12,7 +13,7 @@ function MiniGraph({ selectedId, transactions, scores }) {
   const [w, setW] = useState(0);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el) return undefined;
     const ro = new ResizeObserver((e) => setW(Math.round(e[0].contentRect.width)));
     ro.observe(el);
     return () => ro.disconnect();
@@ -61,22 +62,67 @@ function MiniGraph({ selectedId, transactions, scores }) {
   );
 }
 
-export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events }) {
+function renderMetric(label, value, tone = 'normal') {
+  return (
+    <div className={`metric ${tone}`}>
+      <div className="k">{label}</div>
+      <div className="v">{value}</div>
+    </div>
+  );
+}
+
+export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events, latestDetection, timeline, replayStats, totalTx, replayPlaying }) {
+  const falseCount = flaggedCount - caught;
+  const timelineItems = timeline.slice(0, 6);
+
   if (!scored) {
     return (
       <aside className="panel">
         <h2>Detection summary</h2>
-        <p className="empty">
-          Rule-based scan complete. <span className="found">Caught {caught} of {planted} planted mules</span> with{' '}
-          {flaggedCount - caught} false positive{flaggedCount - caught === 1 ? '' : 's'} at threshold {threshold}.
-          <br />
-          <br />
-          Flip <b>Highlight flagged</b> to turn the ring red and watch the fan-in → fan-out funnel separate from the
-          hairball. Drag the <b>risk threshold</b> to re-flag live.
-          <br />
-          <br />
-          <span className="kbd">Click any node</span> to see exactly which signals fired and why.
-        </p>
+        <div className="dashboard-metrics">
+          {renderMetric('Transactions', `${replayStats.transactions.toLocaleString()} / ${totalTx.toLocaleString()}`)}
+          {renderMetric('Flagged', replayStats.flagged)}
+          {renderMetric('False positives', replayStats.fp, replayStats.fp ? 'warn' : 'normal')}
+          {renderMetric('Scam networks', replayStats.networks)}
+          {renderMetric('Accounts in networks', replayStats.accountsInNetworks)}
+        </div>
+
+        {latestDetection && (
+          <div className="latest-detection">
+            <div className="latest-title">LATEST DETECTION</div>
+            <div className="latest-card">
+              <div className="latest-badge">{latestDetection.title}</div>
+              {latestDetection.account && <div className="latest-account">{latestDetection.account}</div>}
+              {latestDetection.scoreFrom !== null && (
+                <div className="latest-score">Score {latestDetection.scoreFrom} → {latestDetection.scoreTo}</div>
+              )}
+              {latestDetection.lines && (
+                <div className="latest-reason">{latestDetection.lines.slice(0, 2).join(' · ')}</div>
+              )}
+              <div className="latest-time">{latestDetection.label}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="timeline-panel">
+          <div className="timeline-title">DETECTION TIMELINE</div>
+          {timelineItems.length === 0 ? (
+            <div className="timeline-empty">Waiting for first meaningful detection…</div>
+          ) : (
+            <div className="timeline-list">
+              {timelineItems.map((item) => (
+                <div className="timeline-row" key={item.id}>
+                  <span className="timeline-dot">●</span>
+                  <div>
+                    <div className="timeline-copy">{item.title.replace('🕸 ', '')}</div>
+                    <div className="timeline-time">{item.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <LiveFeed events={events} />
       </aside>
     );
@@ -103,6 +149,20 @@ export default function SidePanel({ scored, transactions, scores, threshold, cau
       </div>
 
       <div className="reason">{explain(scored, threshold)}</div>
+
+      <div className="why-box">
+        <div className="why-title">WHY FLAGGED?</div>
+        <div className="why-id">{scored.id}</div>
+        <div className="why-sub">Risk score {scored.score.toFixed(0)} / 100</div>
+        <div className="why-signals">
+          {SIGNAL_ORDER.filter(({ key }) => scored.norm[key] > 0.15).slice(0, 3).map(({ key, label }) => (
+            <div key={key} className="why-signal">
+              <span className="why-signal-name">{label}</span>
+              <span className="why-signal-detail">{signalDetail(key, scored)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {SIGNAL_ORDER.map(({ key, label }) => {
         const v = scored.norm[key];

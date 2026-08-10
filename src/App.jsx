@@ -68,12 +68,54 @@ function transactionTimestamp(tx) {
 }
 
 function transactionLabel(tx) {
-  if (!tx) return 'Day 0, 00:00';
-  const date = new Date(tx.timestamp);
+  if (!tx) return 'Day 0 · 00:00';
+  const date = typeof tx.ts === 'number' && !Number.isNaN(tx.ts) ? new Date(tx.ts * 1000) : new Date(tx.timestamp);
   const hh = String(date.getUTCHours()).padStart(2, '0');
   const mm = String(date.getUTCMinutes()).padStart(2, '0');
-  const day = Math.min(30, Math.max(1, Math.floor((date.getTime() - new Date(tx.timestamp).setUTCHours(0, 0, 0, 0)) / (24 * 3600 * 1000)) + 1));
-  return `Day ${day}, ${hh}:${mm}`;
+  const day = Math.min(30, Math.max(1, Math.floor((date.getTime() - new Date(date).setUTCHours(0, 0, 0, 0)) / (24 * 3600 * 1000)) + 1));
+  return `Day ${day} · ${hh}:${mm}`;
+}
+
+function formatDayLabel(ts) {
+  if (!ts || Number.isNaN(ts)) return 'Day 0 · 00:00';
+  const date = new Date(ts * 1000);
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mm = String(date.getUTCMinutes()).padStart(2, '0');
+  const day = Math.min(30, Math.max(1, Math.floor((date.getTime() - new Date(date).setUTCHours(0, 0, 0, 0)) / (24 * 3600 * 1000)) + 1));
+  return `Day ${day} · ${hh}:${mm}`;
+}
+
+function topSignalSummary(scored) {
+  const entries = Object.entries(scored.contrib)
+    .filter(([, pts]) => pts > 4)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([key]) => key);
+  if (entries.length === 0) return [];
+  const labelMap = {
+    struct: 'Structuring',
+    hold: 'Fast pass-through',
+    fanin: 'Fan-in',
+    velocity: 'Velocity',
+    fanout: 'Fan-out',
+    mismatch: 'Category mismatch',
+  };
+  return entries.map((key) => labelMap[key] || key);
+}
+
+function createDetectionEvent({ title, account, scoreFrom, scoreTo, reason, lines = [], label, type, extra }) {
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title,
+    account,
+    scoreFrom,
+    scoreTo,
+    reason,
+    lines,
+    label,
+    type,
+    extra,
+  };
 }
 
 function buildFlaggedNetworks(flaggedIds, transactions) {
@@ -106,10 +148,10 @@ function buildFlaggedNetworks(flaggedIds, transactions) {
         }
       }
     }
-    if (group.size > 0) {
-      const edgeCount = relevantTx.filter(
-        (tx) => group.has(tx.sender_id) && group.has(tx.receiver_id)
-      ).length;
+    const edgeCount = relevantTx.filter(
+      (tx) => group.has(tx.sender_id) && group.has(tx.receiver_id)
+    ).length;
+    if (group.size > 1 && edgeCount > 0) {
       groups.push({ ids: group, edgeCount });
     }
   }
@@ -278,6 +320,8 @@ export default function App() {
   const [replayIndex, setReplayIndex] = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [events, setEvents] = useState([]);
+  const [latestDetection, setLatestDetection] = useState(null);
+  const [timeline, setTimeline] = useState([]);
   const [latestTransaction, setLatestTransaction] = useState(null);
   const [caughtCount, setCaughtCount] = useState(0);
   const [freshLinkIds, setFreshLinkIds] = useState(new Set());
@@ -316,12 +360,20 @@ export default function App() {
 
   const visibleTransactions = useMemo(() => sortedTransactions.slice(0, replayIndex), [sortedTransactions, replayIndex]);
 
-  const liveNetworkGroups = useMemo(
-    () => buildFlaggedNetworks(liveFlaggedSet, visibleTransactions),
-    [liveFlaggedSet, visibleTransactions]
+  const liveConfirmedNetworkGroups = useMemo(
+    () => buildFlaggedNetworks(liveConfirmedIds, visibleTransactions),
+    [liveConfirmedIds, visibleTransactions]
   );
 
-  const liveNetworkSummary = useMemo(() => getNetworkSummary(liveNetworkGroups), [liveNetworkGroups]);
+  const liveConfirmedNetworkSummary = useMemo(
+    () => getNetworkSummary(liveConfirmedNetworkGroups),
+    [liveConfirmedNetworkGroups]
+  );
+
+  const liveAccountsInNetworks = useMemo(
+    () => liveConfirmedNetworkGroups.reduce((sum, group) => sum + group.ids.size, 0),
+    [liveConfirmedNetworkGroups]
+  );
 
   const liveFlaggedCount = liveFlaggedSet.size;
 
@@ -342,7 +394,9 @@ export default function App() {
     caught: Array.from(liveFlaggedSet).filter((id) => plantedSet.has(id)).length,
     planted: data?.plantedMules.length || 0,
     fp: liveFalsePositiveIds.size,
-  }), [data, replayIndex, liveFlaggedSet, liveFalsePositiveIds, plantedSet]);
+    networks: liveConfirmedNetworkSummary.count,
+    accountsInNetworks: liveAccountsInNetworks,
+  }), [data, replayIndex, liveFlaggedSet, liveFalsePositiveIds, plantedSet, liveConfirmedNetworkSummary, liveAccountsInNetworks]);
 
   useEffect(() => {
     if (replayIndex > totalTx) setReplayIndex(totalTx);
@@ -401,59 +455,102 @@ export default function App() {
     const label = transactionLabel(tx);
 
     const nextEvents = [];
-    if (senderScore && senderScore.score >= threshold && senderPrev.score < threshold) {
-      const statusText = plantedSet.has(tx.sender_id)
-        ? 'FLAGGED — suspicious money-flow pattern'
-        : 'FLAGGED BY RULES';
+
+    const addThresholdEvent = (id, prev, current) => {
+      if (!current || current.score < threshold || prev.score >= threshold) return;
+      const isFalsePositive = !plantedSet.has(id);
+      const reason = topSignalSummary(current).join(' + ') || 'Multiple signals';
       nextEvents.push(
-        createEvent(
-          `${tx.sender_id} crossed risk threshold\n${senderPrev.score.toFixed(0)} → ${senderScore.score.toFixed(0)}\n${statusText}`,
-          label
-        )
+        createDetectionEvent({
+          title: isFalsePositive ? '🟠 FLAGGED BY RULES' : '🔴 RISK THRESHOLD CROSSED',
+          account: id,
+          scoreFrom: prev.score.toFixed(0),
+          scoreTo: current.score.toFixed(0),
+          reason,
+          lines: [
+            ...topSignalSummary(current).slice(0, 3).map((r) => `• ${r}`),
+            `Day ${label.replace(' · ', ' · ')}`,
+          ],
+          label,
+          type: isFalsePositive ? 'false-positive' : 'threshold',
+        })
+      );
+    };
+
+    addThresholdEvent(tx.sender_id, senderPrev, senderScore);
+    addThresholdEvent(tx.receiver_id, receiverPrev, receiverScore);
+
+    if (liveConfirmedNetworkSummary.count > previousNetworkStateRef.current.count) {
+      nextEvents.push(
+        createDetectionEvent({
+          title: '🕸 SCAM NETWORK DETECTED',
+          account: null,
+          scoreFrom: null,
+          scoreTo: null,
+          reason: null,
+          lines: [
+            `Network #${liveConfirmedNetworkSummary.count}`,
+            `${liveConfirmedNetworkSummary.largestSize} flagged mule accounts connected`,
+            `${liveConfirmedNetworkSummary.largestEdges} suspicious transactions`,
+          ],
+          label,
+          type: 'network-detected',
+        })
+      );
+    } else if (liveConfirmedNetworkSummary.largestSize > previousNetworkStateRef.current.largestSize) {
+      nextEvents.push(
+        createDetectionEvent({
+          title: '🕸 NETWORK EXPANDED',
+          account: null,
+          scoreFrom: null,
+          scoreTo: null,
+          reason: null,
+          lines: [
+            `Network #1`,
+            `${previousNetworkStateRef.current.largestSize} → ${liveConfirmedNetworkSummary.largestSize} flagged mule accounts`,
+            `${liveConfirmedNetworkSummary.largestEdges} suspicious transactions`,
+          ],
+          label,
+          type: 'network-expanded',
+        })
       );
     }
 
-    if (receiverScore && receiverScore.score >= threshold && receiverPrev.score < threshold) {
-      const statusText = plantedSet.has(tx.receiver_id)
-        ? 'FLAGGED — suspicious money-flow pattern'
-        : 'FLAGGED BY RULES';
+    const milestoneThresholds = [2, 5, 10, 19];
+    const previousMilestone = milestoneThresholds.filter((size) => previousNetworkStateRef.current.largestSize >= size).pop() || 0;
+    const currentMilestone = milestoneThresholds.filter((size) => liveConfirmedNetworkSummary.largestSize >= size).pop() || 0;
+    if (currentMilestone > previousMilestone) {
       nextEvents.push(
-        createEvent(
-          `${tx.receiver_id} crossed risk threshold\n${receiverPrev.score.toFixed(0)} → ${receiverScore.score.toFixed(0)}\n${statusText}`,
-          label
-        )
+        createDetectionEvent({
+          title: '🕸 NETWORK MILESTONE',
+          account: null,
+          scoreFrom: null,
+          scoreTo: null,
+          reason: null,
+          lines: [
+            `Network #1`,
+            `${liveConfirmedNetworkSummary.largestSize} flagged mule accounts`,
+            `${liveConfirmedNetworkSummary.largestEdges} suspicious transactions`,
+          ],
+          label,
+          type: 'network-milestone',
+        })
       );
     }
 
-    if (liveNetworkSummary.count > previousNetworkStateRef.current.count) {
-      nextEvents.push(
-        createEvent(
-          `Flagged network count increased to ${liveNetworkSummary.count}`,
-          label
-        )
-      );
-    } else if (liveNetworkSummary.largestSize > previousNetworkStateRef.current.largestSize) {
-      nextEvents.push(
-        createEvent(
-          `Largest flagged cluster grew to ${liveNetworkSummary.largestSize} accounts`,
-          label
-        )
-      );
+    if (nextEvents.length > 0) {
+      setEvents((prev) => [...nextEvents, ...prev].slice(0, MAX_EVENT_ROWS));
+      setLatestDetection(nextEvents[0]);
+      const timelineItems = nextEvents.filter((event) => ['threshold', 'false-positive', 'network-detected', 'network-expanded', 'network-milestone', 'false-positive-confirmed'].includes(event.type));
+      if (timelineItems.length > 0) {
+        setTimeline((prev) => [...timelineItems, ...prev].slice(0, 20));
+      }
     }
-
-    nextEvents.push(
-      createEvent(
-        `${tx.sender_id} → ${tx.receiver_id}\n${formatAmount(tx.amount)}`,
-        label
-      )
-    );
-
-    setEvents((prev) => [...nextEvents, ...prev].slice(0, MAX_EVENT_ROWS));
     previousLiveScoreRef.current.set(tx.sender_id, senderScore || senderPrev);
     previousLiveScoreRef.current.set(tx.receiver_id, receiverScore || receiverPrev);
-    previousNetworkStateRef.current = liveNetworkSummary;
+    previousNetworkStateRef.current = liveConfirmedNetworkSummary;
     setCaughtCount(Array.from(liveFlaggedSet).filter((id) => plantedSet.has(id)).length);
-  }, [replayIndex, data, liveScores, sortedTransactions, threshold, plantedSet, liveFlaggedSet, liveNetworkSummary]);
+  }, [replayIndex, data, liveScores, sortedTransactions, threshold, plantedSet, liveConfirmedNetworkSummary, liveFlaggedSet]);
 
   useEffect(() => {
     if (data && scores) {
@@ -538,21 +635,23 @@ export default function App() {
         </div>
         <div className="stat">
           <div className="k">Transactions</div>
-          <div className="v">{stats.transactions.toLocaleString()}</div>
+          <div className="v">{replayStats.transactions.toLocaleString()} / {totalTx.toLocaleString()}</div>
         </div>
         <div className="stat">
           <div className="k">Flagged</div>
           <div className="v">{replayStats.flagged}</div>
         </div>
-        <div className="stat catch">
-          <div className="k">Caught planted mules</div>
-          <div className="v">
-            {replayStats.caught} / {replayStats.planted}
-          </div>
-        </div>
-        <div className={`stat fp ${replayStats.fp === 0 ? 'zero' : ''}`}>
+        <div className="stat fp">
           <div className="k">False positives</div>
           <div className="v">{replayStats.fp}</div>
+        </div>
+        <div className="stat">
+          <div className="k">Scam networks</div>
+          <div className="v">{replayStats.networks}</div>
+        </div>
+        <div className="stat">
+          <div className="k">Accounts in networks</div>
+          <div className="v">{replayStats.accountsInNetworks}</div>
         </div>
       </div>
 
@@ -622,6 +721,8 @@ export default function App() {
             replayIndex={replayIndex}
             freshLinkIds={freshLinkIds}
             liveFlaggedSet={liveFlaggedSet}
+            liveConfirmedIds={liveConfirmedIds}
+            liveFalsePositiveIds={liveFalsePositiveIds}
             onSelect={(id) => {
               if (demoStep !== null) setDemoStep(null);
               setSelectedId(id);
@@ -638,6 +739,11 @@ export default function App() {
           planted={replayStats.planted}
           flaggedCount={replayStats.flagged}
           events={events}
+          latestDetection={latestDetection}
+          timeline={timeline}
+          replayStats={replayStats}
+          totalTx={totalTx}
+          replayPlaying={replayPlaying}
         />
       </div>
     </div>
