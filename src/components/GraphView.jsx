@@ -7,7 +7,7 @@ const TAU = 2 * Math.PI;
 
 const radius = (node) => 2 + Math.min(6, Math.sqrt((node.degree || 1)));
 
-export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, liveFlaggedSet = null }) {
+export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null }) {
   const wrapRef = useRef(null);
   const fgRef = useRef(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
@@ -62,9 +62,11 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
         if (!replayMode) return true;
         const links = graphData && graphData.links ? graphData.links : [];
         for (const l of links) {
-          const a = typeof l.source === 'object' ? l.source.id : l.source;
-          const b = typeof l.target === 'object' ? l.target.id : l.target;
-          if (a === node.id || b === node.id) return true;
+          if (typeof l.tx !== 'object' || l.tx._index < replayIndex) {
+            const a = typeof l.source === 'object' ? l.source.id : l.source;
+            const b = typeof l.target === 'object' ? l.target.id : l.target;
+            if (a === node.id || b === node.id) return true;
+          }
         }
         return false;
       })();
@@ -92,7 +94,7 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       }
       ctx.globalAlpha = 1;
     },
-    [flaggedSet, highlight, selectedId, graphData, replayMode, liveFlaggedSet]
+    [flaggedSet, highlight, selectedId, graphData, replayMode, freshLinkIds, replayIndex, liveFlaggedSet]
   );
 
   const nodePointerAreaPaint = useCallback((node, color, ctx) => {
@@ -112,15 +114,25 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       const b = endId(link.target);
       const liveA = liveFlaggedSet && liveFlaggedSet.has(a);
       const liveB = liveFlaggedSet && liveFlaggedSet.has(b);
+      const isFresh = freshLinkIds.has(link.id);
+      if (isFresh) return 'rgba(255,215,90,0.95)';
       if (liveA && liveB) return 'rgba(255,77,94,0.95)';
-      if (!highlight) return 'rgba(120,140,170,0.10)';
+      if (!replayMode) {
+        if (!highlight) return 'rgba(120,140,170,0.10)';
+        const fs = flaggedSet.has(a);
+        const ft = flaggedSet.has(b);
+        if (fs && ft) return 'rgba(255,77,94,0.85)';
+        if (fs || ft) return 'rgba(150,170,200,0.5)';
+        return 'rgba(120,140,170,0.035)';
+      }
+      // Hide unrevealed edges during replay
+      if (typeof link.tx === 'object' && link.tx._index >= replayIndex) return 'rgba(0,0,0,0)';
       const fs = flaggedSet.has(a);
       const ft = flaggedSet.has(b);
-      if (fs && ft) return 'rgba(255,77,94,0.85)';
-      if (fs || ft) return 'rgba(150,170,200,0.5)';
-      return 'rgba(120,140,170,0.035)';
+      if (highlight && fs && ft) return 'rgba(255,77,94,0.85)';
+      return 'rgba(120,140,170,0.12)';
     },
-    [flaggedSet, highlight, liveFlaggedSet]
+    [flaggedSet, highlight, liveFlaggedSet, freshLinkIds, replayMode, replayIndex]
   );
 
   const linkWidth = useCallback(
@@ -129,6 +141,9 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       const b = endId(link.target);
       const liveA = liveFlaggedSet && liveFlaggedSet.has(a);
       const liveB = liveFlaggedSet && liveFlaggedSet.has(b);
+      const isFresh = freshLinkIds.has(link.id);
+      if (isFresh) return 2.2;
+      if (typeof link.tx === 'object' && replayMode && link.tx._index >= replayIndex) return 0.25;
       if (liveA && liveB) return 1.8;
       if (!highlight) return 0.5;
       const fs = flaggedSet.has(a);
@@ -137,7 +152,7 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       if (fs || ft) return 0.8;
       return 0.4;
     },
-    [flaggedSet, highlight, liveFlaggedSet]
+    [flaggedSet, highlight, liveFlaggedSet, freshLinkIds, replayMode, replayIndex]
   );
 
   return (

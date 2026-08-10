@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { SIGNAL_ORDER, WEIGHTS, explain, signalDetail, neighborhood } from '../detection.js';
+import LiveFeed from './LiveFeed.jsx';
 
 const COLORS = { personal: '#6b7fd7', merchant: '#22c39a', payments_bank: '#b57bff' };
 const FLAG = '#ff4d5e';
@@ -60,7 +61,7 @@ function MiniGraph({ selectedId, transactions, scores }) {
   );
 }
 
-export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount }) {
+export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events }) {
   if (!scored) {
     return (
       <aside className="panel">
@@ -76,6 +77,7 @@ export default function SidePanel({ scored, transactions, scores, threshold, cau
           <br />
           <span className="kbd">Click any node</span> to see exactly which signals fired and why.
         </p>
+        <LiveFeed events={events} />
       </aside>
     );
   }
