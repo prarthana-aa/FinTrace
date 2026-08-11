@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// TrustGraph detection — fully rule-based, transparent, mirrors verify2.py
+// Fintrace detection — fully rule-based, transparent, mirrors verify2.py
 //
 // Every account gets six independent signals, each normalised to 0..1, then
 // combined by fixed weights into a 0..100 risk score. Nothing is learned; every
