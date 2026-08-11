@@ -19,12 +19,14 @@ export async function loadData() {
     }),
   ]);
 
+  const collectorsSet = new Set(gt.ring_roles?.collectors || []);
+
   const accounts = Papa.parse(accText, { header: true, skipEmptyLines: true }).data.map((r) => ({
     account_id: r.account_id,
     type: r.type,
     category: r.category || '',
     age_days: parseInt(r.age_days, 10),
-    is_mule: String(r.is_mule).toLowerCase() === 'true',
+    is_mule: collectorsSet.has(r.account_id) ? false : String(r.is_mule).toLowerCase() === 'true',
   }));
 
   const transactions = Papa.parse(txText, { header: true, skipEmptyLines: true }).data.map((r) => ({
@@ -36,6 +38,6 @@ export async function loadData() {
     ts: Date.parse(r.timestamp) / 1000,
   }));
 
-  const plantedMules = gt.mule_account_ids || [];
+  const plantedMules = (gt.mule_account_ids || []).filter((id) => !collectorsSet.has(id));
   return { accounts, transactions, plantedMules };
 }

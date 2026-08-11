@@ -188,14 +188,14 @@ export default function App() {
   }, []);
 
   const accountsById = useMemo(
-    () => (data ? new Map(data.accounts.map((account) => [account.id, account])) : new Map()),
+    () => (data ? new Map(data.accounts.map((account) => [account.account_id, account])) : new Map()),
     [data]
   );
 
   const sortedTransactions = useMemo(() => {
     if (!data) return [];
     const arr = [...data.transactions];
-    arr.sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    arr.sort((a, b) => a.ts - b.ts);
     return arr.map((tx, index) => ({ ...tx, _index: index }));
   }, [data]);
 
@@ -467,10 +467,12 @@ export default function App() {
           scoreFrom: prev.score.toFixed(0),
           scoreTo: current.score.toFixed(0),
           reason,
-          lines: [
-            ...topSignalSummary(current).slice(0, 3).map((r) => `• ${r}`),
-            `Day ${label.replace(' · ', ' · ')}`,
-          ],
+          lines: isFalsePositive
+            ? ['Ground truth: legitimate', 'FALSE POSITIVE']
+            : [
+                ...topSignalSummary(current).slice(0, 3).map((r) => `• ${r}`),
+                `Day ${label.replace(' · ', ' · ')}`,
+              ],
           label,
           type: isFalsePositive ? 'false-positive' : 'threshold',
         })
