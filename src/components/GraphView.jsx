@@ -5,7 +5,12 @@ const COLORS = { personal: '#6b7fd7', merchant: '#22c39a', payments_bank: '#b57b
 const FLAG = '#ff4d5e';
 const TAU = 2 * Math.PI;
 
-const radius = (node) => 2 + Math.min(6, Math.sqrt((node.degree || 1)));
+const radius = (node) => {
+  const degreeSize = Math.min(4, Math.sqrt(node.degree || 1));
+  const riskSize = Math.min(7, (node.score || 0) / 14);
+
+  return 2 + degreeSize + riskSize;
+};
 
 export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null, liveConfirmedIds = null, liveFalsePositiveIds = null }) {
   const wrapRef = useRef(null);
@@ -148,7 +153,17 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       const falseB = liveFalsePositiveIds && liveFalsePositiveIds.has(b);
       const liveA = liveFlaggedSet && liveFlaggedSet.has(a);
       const liveB = liveFlaggedSet && liveFlaggedSet.has(b);
+      const nodeA = graphData.nodes.find(n => n.id === a);
+      const nodeB = graphData.nodes.find(n => n.id === b);
+
+      const riskA = nodeA?.score || 0;
+      const riskB = nodeB?.score || 0;
+
+      const maxRisk = Math.max(riskA, riskB);
       const isFresh = freshLinkIds.has(link.id);
+      if (maxRisk >= 80) return 3.5;
+      if (maxRisk >= 70) return 2.8;
+      if (maxRisk >= 50) return 1.8;
       if (isFresh) return 2.2;
       if (typeof link.tx === 'object' && replayMode && link.tx._index >= replayIndex) return 0.25;
       if (confirmedA && confirmedB) return 2.2;
@@ -179,7 +194,38 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
           nodePointerAreaPaint={nodePointerAreaPaint}
           linkColor={linkColor}
           linkWidth={linkWidth}
-          linkDirectionalParticles={0}
+          linkDirectionalParticles={(link) => {
+            const a = endId(link.source);
+            const b = endId(link.target);
+
+            const suspiciousA =
+              liveFlaggedSet && liveFlaggedSet.has(a);
+
+            const suspiciousB =
+              liveFlaggedSet && liveFlaggedSet.has(b);
+
+            const flaggedA = flaggedSet.has(a);
+            const flaggedB = flaggedSet.has(b);
+
+            return suspiciousA ||
+              suspiciousB ||
+              flaggedA ||
+              flaggedB
+              ? 3
+              : 1;
+          }}
+          linkDirectionalParticleSpeed={(link) => {
+            const a = endId(link.source);
+            const b = endId(link.target);
+
+            const suspicious =
+              (liveFlaggedSet && liveFlaggedSet.has(a)) ||
+              (liveFlaggedSet && liveFlaggedSet.has(b)) ||
+              flaggedSet.has(a) ||
+              flaggedSet.has(b);
+
+            return suspicious ? 0.0015 : 0.0005;
+          }}
           onNodeClick={(n) => {
             if (demoStep !== null && typeof onExitDemo === 'function') onExitDemo();
             onSelect(n.id);
