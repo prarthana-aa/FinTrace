@@ -554,9 +554,9 @@ export default function App() {
           lines: isFalsePositive
             ? ['Ground truth: legitimate', 'FALSE POSITIVE']
             : [
-                ...topSignalSummary(current).slice(0, 3).map((r) => `• ${r}`),
-                `Day ${label.replace(' · ', ' · ')}`,
-              ],
+              ...topSignalSummary(current).slice(0, 3).map((r) => `• ${r}`),
+              `Day ${label.replace(' · ', ' · ')}`,
+            ],
           label,
           type: isFalsePositive ? 'false-positive' : 'threshold',
         })
@@ -714,7 +714,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          TrustGraph<span>· mule-ring detection by money-flow shape (rule-based, no ML)</span>
+          FinTrace<span>· mule-ring detection by money-flow shape (rule-based, no ML)</span>
         </div>
         <div className="topbar-nav">
           <button className={`topbar-nav-tab active`} disabled>LIVE DETECTION</button>
