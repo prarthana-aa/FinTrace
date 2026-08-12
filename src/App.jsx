@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import GraphView from './components/GraphView.jsx';
 import SidePanel from './components/SidePanel.jsx';
 import HowItWorksView from './components/HowItWorksView.jsx';
+import MuleRingAnalysisView from './components/MuleRingAnalysisView.jsx';
 import { computeSignals, DEFAULT_THRESHOLD } from './detection.js';
 import { loadData } from './dataLoader.js';
 
@@ -219,7 +220,7 @@ function discoverRingStages(structure, visibleTransactions, plantedIds) {
 }
 
 export default function App() {
-  const [view, setView] = useState('live'); // 'live' | 'story'
+  const [view, setView] = useState('live'); // 'live' | 'story' | 'ring'
   const [data, setData] = useState(null);
   const [scores, setScores] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -678,6 +679,22 @@ export default function App() {
     return <HowItWorksView onReturnToLive={() => setView('live')} />;
   }
 
+  if (view === 'ring') {
+    return (
+      <MuleRingAnalysisView
+        data={data}
+        scores={scores}
+        threshold={threshold}
+        replayIndex={replayIndex}
+        totalTx={totalTx}
+        transactions={sortedTransactions}
+        ringStructure={ringStructure}
+        replayStats={replayStats}
+        onReturnToLive={() => setView('live')}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -829,6 +846,7 @@ export default function App() {
           replayPlaying={replayPlaying}
           ringStages={ringStages}
           ringMoneyFlow={ringMoneyFlow}
+          onShowRingDetails={() => setView('ring')}
         />
       </div>
     </div>

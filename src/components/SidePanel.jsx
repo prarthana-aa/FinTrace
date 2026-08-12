@@ -71,7 +71,7 @@ function renderMetric(label, value, tone = 'normal') {
   );
 }
 
-export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events, latestDetection, timeline, replayStats, totalTx, replayPlaying, ringStages = [], ringMoneyFlow = 0 }) {
+export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events, latestDetection, timeline, replayStats, totalTx, replayPlaying, ringStages = [], ringMoneyFlow = 0, onShowRingDetails }) {
   const falseCount = flaggedCount - caught;
   const timelineItems = timeline.slice(0, 6);
   const formattedRingMoneyFlow = ringMoneyFlow === 0
@@ -111,6 +111,7 @@ export default function SidePanel({ scored, transactions, scores, threshold, cau
                 </div>
             ))}
           </div>
+          <button className="ring-details-btn" onClick={onShowRingDetails}>More Details</button>
         </div>
 
         {latestDetection && (
