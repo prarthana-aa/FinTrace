@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import GraphView from './components/GraphView.jsx';
 import SidePanel from './components/SidePanel.jsx';
+import HowItWorksView from './components/HowItWorksView.jsx';
 import { computeSignals, DEFAULT_THRESHOLD } from './detection.js';
 import { loadData } from './dataLoader.js';
 
@@ -170,6 +171,7 @@ function getNetworkSummary(groups) {
 }
 
 export default function App() {
+  const [view, setView] = useState('live'); // 'live' | 'story'
   const [data, setData] = useState(null);
   const [scores, setScores] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -319,6 +321,7 @@ export default function App() {
   const [replayMode, setReplayMode] = useState(false);
   const [replayIndex, setReplayIndex] = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState(1); // 1 or 2
   const [events, setEvents] = useState([]);
   const [latestDetection, setLatestDetection] = useState(null);
   const [timeline, setTimeline] = useState([]);
@@ -568,15 +571,16 @@ export default function App() {
       setReplayPlaying(false);
       return undefined;
     }
+    const delay = REPLAY_DELAY_MS / replaySpeed;
     const id = setInterval(() => {
       setReplayIndex((i) => {
         const next = Math.min(totalTx, i + REPLAY_BATCH_SIZE);
         if (next >= totalTx) setReplayPlaying(false);
         return next;
       });
-    }, REPLAY_DELAY_MS);
+    }, delay);
     return () => clearInterval(id);
-  }, [replayPlaying, totalTx]);
+  }, [replayPlaying, totalTx, replaySpeed]);
 
   const handleStartReplay = () => {
     setReplayMode(true);
@@ -613,11 +617,19 @@ export default function App() {
 
   const selectedScored = selectedId ? scores.get(selectedId) : null;
 
+  if (view === 'story') {
+    return <HowItWorksView onReturnToLive={() => setView('live')} />;
+  }
+
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
           TrustGraph<span>· mule-ring detection by money-flow shape (rule-based, no ML)</span>
+        </div>
+        <div className="topbar-nav">
+          <button className={`topbar-nav-tab active`} disabled>LIVE DETECTION</button>
+          <button className="topbar-nav-tab" onClick={() => setView('story')}>HOW IT WORKS</button>
         </div>
         <div className="legend">
           <span><i className="dot" style={{ background: '#6b7fd7' }} />personal</span>
@@ -684,6 +696,13 @@ export default function App() {
             <div className="replay-controls">
               <button onClick={handlePauseResume}>{replayPlaying ? 'Pause' : 'Resume'}</button>
               <button onClick={handleResetReplay}>Reset</button>
+              <button
+                className={replaySpeed === 2 ? 'speed-btn active' : 'speed-btn'}
+                title="Toggle replay speed"
+                onClick={() => setReplaySpeed((s) => (s === 1 ? 2 : 1))}
+              >
+                {replaySpeed}× Speed
+              </button>
               <input
                 className="replay-scrub"
                 type="range"
