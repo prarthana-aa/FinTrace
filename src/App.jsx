@@ -420,6 +420,21 @@ export default function App() {
     () => discoverRingStages(ringStructure, visibleTransactions, data?.plantedMules || []),
     [ringStructure, visibleTransactions, data]
   );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__trustgraph_ring_debug = {
+        ringEntryId: ringStructure.entryId,
+        ringEntryIds: ringStructure.stages.find((stage) => stage.key === 'collector')?.ids || [],
+        ringEntryDiscovered: ringStages.find((stage) => stage.key === 'collector')?.discovered,
+        ringExitId: ringStructure.exitId,
+        ringExitDiscovered: ringStages.find((stage) => stage.key === 'cashout')?.discovered,
+        collectorStageIds: ringStructure.stages.find((stage) => stage.key === 'collector')?.ids || [],
+        entryStageIds: ringStructure.stages.find((stage) => stage.key === 'entry')?.ids || [],
+      };
+    }
+  }, [ringStructure, ringStages]);
+
   const ringMoneyFlow = useMemo(
     () => visibleTransactions.reduce((sum, tx) => (ringStructure.ringIds.has(tx.sender_id) || ringStructure.ringIds.has(tx.receiver_id) ? sum + tx.amount : sum), 0),
     [visibleTransactions, ringStructure]
@@ -820,6 +835,7 @@ export default function App() {
             liveFalsePositiveIds={liveFalsePositiveIds}
             liveNetworkIds={liveNetworkIds}
             ringEntryId={ringStructure.entryId}
+            ringEntryIds={ringStructure.stages.find((stage) => stage.key === 'collector')?.ids || []}
             ringExitId={ringStructure.exitId}
             ringEntryDiscovered={ringStages.find((stage) => stage.key === 'collector')?.discovered}
             ringExitDiscovered={ringStages.find((stage) => stage.key === 'cashout')?.discovered}

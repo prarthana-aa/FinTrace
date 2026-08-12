@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 
 const COLORS = { personal: '#6b7fd7', merchant: '#22c39a', payments_bank: '#b57bff' };
@@ -12,11 +12,12 @@ const radius = (node) => {
   return 2 + degreeSize + riskSize;
 };
 
-export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null, liveConfirmedIds = null, liveFalsePositiveIds = null, liveNetworkIds = new Set(), ringEntryId = null, ringExitId = null, ringEntryDiscovered = false, ringExitDiscovered = false }) {
+export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null, liveConfirmedIds = null, liveFalsePositiveIds = null, liveNetworkIds = new Set(), ringEntryId = null, ringEntryIds = null, ringExitId = null, ringEntryDiscovered = false, ringExitDiscovered = false }) {
   const wrapRef = useRef(null);
   const fgRef = useRef(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
   const fittedRef = useRef(false);
+  const ringEntrySet = useMemo(() => new Set(ringEntryIds || (ringEntryId ? [ringEntryId] : [])), [ringEntryId, ringEntryIds]);
 
   // keep canvas sized to its container
   useEffect(() => {
@@ -59,12 +60,13 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
   const nodeCanvasObject = useCallback(
     (node, ctx, globalScale) => {
       const isFullFlag = flaggedSet.has(node.id);
-      const isConfirmed = liveConfirmedIds && liveConfirmedIds.has(node.id);
+      const isRingEntryNode = ringEntrySet.has(node.id);
       const isFalsePositive = liveFalsePositiveIds && liveFalsePositiveIds.has(node.id);
+      const isConfirmed = liveConfirmedIds && liveConfirmedIds.has(node.id);
       const isLiveFlag = isConfirmed || isFalsePositive;
-      const isNetwork = liveNetworkIds.has(node.id);
-      const isEntry = highlight && ringEntryDiscovered && node.id === ringEntryId;
-      const isExit = highlight && ringExitDiscovered && node.id === ringExitId;
+      const isNetwork = liveNetworkIds.has(node.id) && !isFalsePositive;
+      const isEntry = highlight && isRingEntryNode && !isFalsePositive;
+      const isExit = !isFalsePositive && highlight && ringExitDiscovered && node.id === ringExitId;
       const highlightDim = highlight && !isFullFlag && !isLiveFlag;
 
       // replay appearance: nodes with no visible edges yet should be dim/small
@@ -122,7 +124,7 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       }
       ctx.globalAlpha = 1;
     },
-    [flaggedSet, highlight, selectedId, graphData, replayMode, freshLinkIds, replayIndex, liveFlaggedSet, liveNetworkIds, ringEntryId, ringExitId, ringEntryDiscovered, ringExitDiscovered]
+    [flaggedSet, highlight, selectedId, graphData, replayMode, freshLinkIds, replayIndex, liveFlaggedSet, liveConfirmedIds, liveFalsePositiveIds, liveNetworkIds, ringEntrySet, ringExitId, ringEntryDiscovered, ringExitDiscovered]
   );
 
   const nodePointerAreaPaint = useCallback((node, color, ctx) => {
