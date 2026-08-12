@@ -71,9 +71,13 @@ function renderMetric(label, value, tone = 'normal') {
   );
 }
 
-export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events, latestDetection, timeline, replayStats, totalTx, replayPlaying }) {
+export default function SidePanel({ scored, transactions, scores, threshold, caught, planted, flaggedCount, events, latestDetection, timeline, replayStats, totalTx, replayPlaying, ringStages = [], ringMoneyFlow = 0 }) {
   const falseCount = flaggedCount - caught;
   const timelineItems = timeline.slice(0, 6);
+  const formattedRingMoneyFlow = ringMoneyFlow === 0
+    ? '₹0'
+    : `₹${ringMoneyFlow.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const visibleRingStages = ringStages.filter((stage) => stage.key !== 'intermediary');
 
   if (!scored) {
     return (
@@ -85,6 +89,28 @@ export default function SidePanel({ scored, transactions, scores, threshold, cau
           {renderMetric('False positives', replayStats.fp, replayStats.fp ? 'warn' : 'normal')}
           {renderMetric('Scam networks', replayStats.networks)}
           {renderMetric('Accounts in networks', replayStats.accountsInNetworks)}
+        </div>
+
+        <div className="ring-card">
+          <div className="ring-card-head">
+            <span>MULE RING PATH</span>
+            <span className="ring-flow"><small>TOTAL MONEY FLOW</small>{formattedRingMoneyFlow}</span>
+          </div>
+          <div className="ring-flow-note">Money flowing through detected ring</div>
+          <div className="ring-stages">
+            {visibleRingStages.map((stage, index) => (
+                <div className={`ring-stage ${stage.discovered ? 'discovered' : 'locked'}`} key={stage.key}>
+                  {index > 0 && <div className="ring-arrow">↓</div>}
+                  <div className="ring-stage-label">{stage.discovered ? '● ' : '○ '}{stage.label}</div>
+                  {stage.discovered ? (
+                    <>
+                      <div className="ring-stage-ids">{stage.ids.join(' · ')}</div>
+                      <div className="ring-stage-note">discovered</div>
+                    </>
+                  ) : <div className="ring-stage-note">Waiting...</div>}
+                </div>
+            ))}
+          </div>
         </div>
 
         {latestDetection && (

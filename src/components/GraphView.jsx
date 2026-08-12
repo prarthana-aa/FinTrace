@@ -12,7 +12,7 @@ const radius = (node) => {
   return 2 + degreeSize + riskSize;
 };
 
-export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null, liveConfirmedIds = null, liveFalsePositiveIds = null }) {
+export default function GraphView({ graphData, flaggedSet, highlight, selectedId, onSelect, demoStep = null, focusIds = null, onExitDemo = null, replayMode = false, replayIndex = 0, freshLinkIds = new Set(), liveFlaggedSet = null, liveConfirmedIds = null, liveFalsePositiveIds = null, liveNetworkIds = new Set(), ringEntryId = null, ringExitId = null, ringEntryDiscovered = false, ringExitDiscovered = false }) {
   const wrapRef = useRef(null);
   const fgRef = useRef(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
@@ -62,6 +62,9 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       const isConfirmed = liveConfirmedIds && liveConfirmedIds.has(node.id);
       const isFalsePositive = liveFalsePositiveIds && liveFalsePositiveIds.has(node.id);
       const isLiveFlag = isConfirmed || isFalsePositive;
+      const isNetwork = liveNetworkIds.has(node.id);
+      const isEntry = highlight && ringEntryDiscovered && node.id === ringEntryId;
+      const isExit = highlight && ringExitDiscovered && node.id === ringExitId;
       const highlightDim = highlight && !isFullFlag && !isLiveFlag;
 
       // replay appearance: nodes with no visible edges yet should be dim/small
@@ -94,6 +97,23 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       ctx.arc(node.x, node.y, r, 0, TAU);
       ctx.fillStyle = fill;
       ctx.fill();
+      if (highlight && isNetwork && isConfirmed) {
+        ctx.globalAlpha = 0.7;
+        ctx.lineWidth = 3 / globalScale;
+        ctx.strokeStyle = 'rgba(255,77,94,0.65)';
+        ctx.stroke();
+      }
+      if (isEntry || isExit) {
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 2.5 / globalScale;
+        ctx.strokeStyle = '#ff4d5e';
+        ctx.setLineDash([4 / globalScale, 3 / globalScale]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = `${Math.max(8, 10 / globalScale)}px sans-serif`;
+        ctx.fillStyle = '#ffb347';
+        ctx.fillText(isEntry ? 'RING ENTRY' : 'RING EXIT', node.x + r + 3, node.y - r - 2);
+      }
       if (node.id === selectedId) {
         ctx.globalAlpha = 1;
         ctx.lineWidth = 2.5 / globalScale;
@@ -102,7 +122,7 @@ export default function GraphView({ graphData, flaggedSet, highlight, selectedId
       }
       ctx.globalAlpha = 1;
     },
-    [flaggedSet, highlight, selectedId, graphData, replayMode, freshLinkIds, replayIndex, liveFlaggedSet]
+    [flaggedSet, highlight, selectedId, graphData, replayMode, freshLinkIds, replayIndex, liveFlaggedSet, liveNetworkIds, ringEntryId, ringExitId, ringEntryDiscovered, ringExitDiscovered]
   );
 
   const nodePointerAreaPaint = useCallback((node, color, ctx) => {

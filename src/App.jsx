@@ -170,6 +170,54 @@ function getNetworkSummary(groups) {
   };
 }
 
+function deriveRingStructure(plantedIds, transactions) {
+  const planted = new Set(plantedIds);
+  const inbound = new Map();
+  const outbound = new Map();
+  const ensure = (id) => { if (!inbound.has(id)) { inbound.set(id, new Set()); outbound.set(id, new Set()); } };
+  for (const tx of transactions) {
+    ensure(tx.sender_id);
+    ensure(tx.receiver_id);
+    inbound.get(tx.receiver_id).add(tx.sender_id);
+    outbound.get(tx.sender_id).add(tx.receiver_id);
+  }
+  const collectors = [...inbound.keys()].filter((id) => !planted.has(id) && [...outbound.get(id)].some((to) => planted.has(to)));
+  const ringIds = new Set([...plantedIds, ...collectors]);
+  const cashout = plantedIds.filter((id) => ![...outbound.get(id)].some((to) => ringIds.has(to)) && [...outbound.get(id)].some((to) => !ringIds.has(to)));
+  const intermediaries = plantedIds.filter((id) => !cashout.includes(id) && [...inbound.get(id)].some((from) => ringIds.has(from)) && [...outbound.get(id)].some((to) => ringIds.has(to)));
+  return {
+    stages: [
+      { key: 'entry', label: 'MONEY ENTRY', ids: [...new Set(collectors.flatMap((id) => [...inbound.get(id)].filter((from) => !ringIds.has(from))))] },
+      { key: 'collector', label: 'COLLECTOR', ids: collectors },
+      { key: 'intermediary', label: 'INTERMEDIARY', ids: intermediaries },
+      { key: 'cashout', label: 'CASH-OUT', ids: cashout },
+      { key: 'exit', label: 'MONEY EXIT', ids: [...new Set(cashout.flatMap((id) => [...outbound.get(id)].filter((to) => !ringIds.has(to))))] },
+    ],
+    entryId: collectors[0] || null,
+    exitId: cashout[0] || null,
+    ringIds,
+  };
+}
+
+function discoverRingStages(structure, visibleTransactions, plantedIds) {
+  const [entry, collector, intermediary, cashout, exit] = structure.stages;
+  const entryTx = visibleTransactions.filter((tx) => entry.ids.includes(tx.sender_id) && collector.ids.includes(tx.receiver_id));
+  const intermediaryTx = visibleTransactions.filter((tx) => collector.ids.includes(tx.sender_id) && intermediary.ids.includes(tx.receiver_id));
+  const cashoutTx = visibleTransactions.filter((tx) => intermediary.ids.includes(tx.sender_id) && cashout.ids.includes(tx.receiver_id));
+  const exitTx = visibleTransactions.filter((tx) => cashout.ids.includes(tx.sender_id) && exit.ids.includes(tx.receiver_id));
+  const discovered = {
+    entry: [...new Set(entryTx.map((tx) => tx.sender_id))],
+    collector: [...new Set(entryTx.map((tx) => tx.receiver_id))],
+    intermediary: [...new Set(intermediaryTx.map((tx) => tx.receiver_id))],
+    cashout: [...new Set(cashoutTx.map((tx) => tx.receiver_id))],
+    exit: [...new Set(exitTx.map((tx) => tx.receiver_id))],
+  };
+  return structure.stages.map((stage) => {
+    const ids = discovered[stage.key] || [];
+    return { ...stage, ids, discovered: ids.length > 0 };
+  });
+}
+
 export default function App() {
   const [view, setView] = useState('live'); // 'live' | 'story'
   const [data, setData] = useState(null);
@@ -241,6 +289,10 @@ export default function App() {
   const plantedGroups = useMemo(
     () => (data ? findPlantedNetworks(data.plantedMules, sortedTransactions) : []),
     [data, sortedTransactions]
+  );
+  const ringStructure = useMemo(
+    () => (data ? deriveRingStructure(data.plantedMules, data.transactions) : { stages: [], entryId: null, exitId: null, ringIds: new Set() }),
+    [data]
   );
   const firstSeenIndex = useMemo(() => buildFirstSeenMap(sortedTransactions), [sortedTransactions]);
 
@@ -363,6 +415,15 @@ export default function App() {
 
   const visibleTransactions = useMemo(() => sortedTransactions.slice(0, replayIndex), [sortedTransactions, replayIndex]);
 
+  const ringStages = useMemo(
+    () => discoverRingStages(ringStructure, visibleTransactions, data?.plantedMules || []),
+    [ringStructure, visibleTransactions, data]
+  );
+  const ringMoneyFlow = useMemo(
+    () => visibleTransactions.reduce((sum, tx) => (ringStructure.ringIds.has(tx.sender_id) || ringStructure.ringIds.has(tx.receiver_id) ? sum + tx.amount : sum), 0),
+    [visibleTransactions, ringStructure]
+  );
+
   const liveConfirmedNetworkGroups = useMemo(
     () => buildFlaggedNetworks(liveConfirmedIds, visibleTransactions),
     [liveConfirmedIds, visibleTransactions]
@@ -375,6 +436,10 @@ export default function App() {
 
   const liveAccountsInNetworks = useMemo(
     () => liveConfirmedNetworkGroups.reduce((sum, group) => sum + group.ids.size, 0),
+    [liveConfirmedNetworkGroups]
+  );
+  const liveNetworkIds = useMemo(
+    () => new Set(liveConfirmedNetworkGroups.flatMap((group) => [...group.ids])),
     [liveConfirmedNetworkGroups]
   );
 
@@ -736,6 +801,11 @@ export default function App() {
             liveFlaggedSet={liveFlaggedSet}
             liveConfirmedIds={liveConfirmedIds}
             liveFalsePositiveIds={liveFalsePositiveIds}
+            liveNetworkIds={liveNetworkIds}
+            ringEntryId={ringStructure.entryId}
+            ringExitId={ringStructure.exitId}
+            ringEntryDiscovered={ringStages.find((stage) => stage.key === 'collector')?.discovered}
+            ringExitDiscovered={ringStages.find((stage) => stage.key === 'cashout')?.discovered}
             onSelect={(id) => {
               if (demoStep !== null) setDemoStep(null);
               setSelectedId(id);
@@ -757,6 +827,8 @@ export default function App() {
           replayStats={replayStats}
           totalTx={totalTx}
           replayPlaying={replayPlaying}
+          ringStages={ringStages}
+          ringMoneyFlow={ringMoneyFlow}
         />
       </div>
     </div>
