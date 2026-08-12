@@ -318,7 +318,7 @@ export default function App() {
   }, [scores, data, flaggedSet]);
 
   // ---- Replay mode state and logic ----
-  const [replayMode, setReplayMode] = useState(false);
+  const [replayMode, setReplayMode] = useState(true);
   const [replayIndex, setReplayIndex] = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replaySpeed, setReplaySpeed] = useState(1); // 1 or 2
@@ -556,14 +556,6 @@ export default function App() {
     previousNetworkStateRef.current = liveConfirmedNetworkSummary;
     setCaughtCount(Array.from(liveFlaggedSet).filter((id) => plantedSet.has(id)).length);
   }, [replayIndex, data, liveScores, sortedTransactions, threshold, plantedSet, liveConfirmedNetworkSummary, liveFlaggedSet]);
-
-  useEffect(() => {
-    if (data && scores) {
-      setReplayMode(true);
-      setReplayIndex(0);
-      setReplayPlaying(true);
-    }
-  }, [data, scores]);
 
   useEffect(() => {
     if (!replayPlaying) return undefined;
