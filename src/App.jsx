@@ -3,7 +3,7 @@ import GraphView from './components/GraphView.jsx';
 import SidePanel from './components/SidePanel.jsx';
 import HowItWorksView from './components/HowItWorksView.jsx';
 import MuleRingAnalysisView from './components/MuleRingAnalysisView.jsx';
-import { computeSignals, DEFAULT_THRESHOLD } from './detection.js';
+import { computeSignals, DEFAULT_THRESHOLD, explain } from './detection.js';
 import { loadData } from './dataLoader.js';
 
 const REPLAY_DELAY_MS = 30; // ms per transaction for a ~90-120s replay
@@ -228,6 +228,7 @@ export default function App() {
   const [highlight, setHighlight] = useState(false);
   const [demoStep, setDemoStep] = useState(null); // null | 0 | 1 | 2 | 3
   const [error, setError] = useState(null);
+  const [showAlerts, setShowAlerts] = useState(false);
 
   useEffect(() => {
     loadData()
@@ -413,6 +414,14 @@ export default function App() {
     }
     return set;
   }, [liveFlaggedSet, plantedSet]);
+
+  const alertAccounts = useMemo(() => {
+    if (!liveScores) return [];
+    return Array.from(liveFlaggedSet)
+      .map((id) => liveScores.get(id))
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score);
+  }, [liveScores, liveFlaggedSet]);
 
   const visibleTransactions = useMemo(() => sortedTransactions.slice(0, replayIndex), [sortedTransactions, replayIndex]);
 
@@ -755,6 +764,131 @@ export default function App() {
         <div className="stat">
           <div className="k">Accounts in networks</div>
           <div className="v">{replayStats.accountsInNetworks}</div>
+        </div>
+        <div
+          className="stat alerts-stat"
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 'auto',
+          }}
+        >
+          <button
+            className="alerts-btn"
+            onClick={() => setShowAlerts((s) => !s)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              background: showAlerts ? 'rgba(255,77,94,0.15)' : 'transparent',
+              border: '1px solid rgba(255,77,94,0.4)',
+              color: '#ff4d5e',
+              borderRadius: 8,
+              padding: '9px 15px',
+              fontSize: 18,
+              fontWeight: 600,
+              cursor: 'pointer',
+              letterSpacing: '0.02em',
+              margin: '0 auto',
+            }}
+          >
+            Alerts
+            {alertAccounts.length > 0 && (
+              <span
+                style={{
+                  background: '#ff4d5e',
+                  color: '#fff',
+                  borderRadius: 999,
+                  fontSize: 11,
+                  lineHeight: 1,
+                  padding: '3px 6px',
+                  fontWeight: 700,
+                }}
+              >
+                {alertAccounts.length}
+              </span>
+            )}
+          </button>
+
+          {showAlerts && (
+            <div
+              className="alerts-dropdown"
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                width: 340,
+                maxHeight: 380,
+                overflowY: 'auto',
+                background: '#141824',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 10,
+                boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+                zIndex: 50,
+                padding: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '6px 8px 10px',
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  marginBottom: 6,
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', opacity: 0.8 }}>
+                  ACTIVE ALERTS
+                </span>
+                <button
+                  onClick={() => setShowAlerts(false)}
+                  style={{ background: 'none', border: 'none', color: 'inherit', opacity: 0.6, cursor: 'pointer', fontSize: 14 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {alertAccounts.length === 0 && (
+                <div style={{ padding: '16px 8px', fontSize: 13, opacity: 0.6 }}>
+                  No accounts have crossed the risk threshold yet.
+                </div>
+              )}
+
+              {alertAccounts.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    setSelectedId(s.id);
+                    setShowAlerts(false);
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    background: selectedId === s.id ? 'rgba(255,77,94,0.1)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 8px',
+                    marginBottom: 2,
+                    cursor: 'pointer',
+                    color: 'inherit',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{s.id}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#ff4d5e' }}>{s.score.toFixed(0)}/100</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, opacity: 0.65, marginTop: 2, lineHeight: 1.4 }}>
+                    {explain(s, threshold)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
